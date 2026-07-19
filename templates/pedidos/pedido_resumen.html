@@ -147,9 +147,17 @@
                             {% csrf_token %}
                             <input type="hidden" name="estado" value="EN_COCINA">
                             <button type="submit" class="btn btn-outline-info btn-sm w-100">
-                                <i class="fas fa-utensils"></i> Cocina
+                                <i class="fas fa-utensils"></i> Cocina (Solo Nuevos)
                             </button>
                         </form>
+
+                        <form method="post" action="{% url 'pedidos:reimprimir_pedido' pk=pedido.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100" 
+                                    data-bs-toggle="tooltip" title="Imprime una copia de todo el pedido">
+                                <i class="fas fa-print"></i> Reimprimir Todo
+                            </button>
+                        </form> 
 
                         <form method="post" action="{% url 'pedidos:cambiar_estado' pk=pedido.id %}">
                             {% csrf_token %}

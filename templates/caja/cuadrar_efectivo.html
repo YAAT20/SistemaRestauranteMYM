@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="card card-main mx-auto" style="max-width: 600px;">
+    <div class="card-header bg-primary text-white">
+        <i class="fas fa-calculator"></i> Rendición de Dinero Físico - Cierre #{{ object.id }}
+    </div>
+    <div class="card-body">
+        <h5>Mozo: {{ object.mozo.get_full_name }}</h5>
+        <p class="text-muted mb-0"><strong>Fecha del Turno:</strong> {{ object.fecha }}</p>
+        <p class="text-muted"><strong>Turno:</strong> {{ object.get_turno_display }}</p>
+        
+        <div class="alert alert-info py-2">
+            <strong>Monto esperado por el sistema:</strong> S/ {{ object.total_sistema|floatformat:2 }}
+        </div>
+        <hr>
+
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="form-group mb-3">
+                <label for="id_efectivo_reportado" class="form-label">Efectivo Real en Gaveta (S/)</label>
+                {{ form.efectivo_reportado }}
+            </div>
+
+            <div class="form-group mb-3">
+                <label for="id_tarjetas_reportadas" class="form-label">Ventas por Tarjeta (S/)</label>
+                {{ form.tarjetas_reportadas }}
+            </div>
+
+            <div class="form-group mb-3">
+                <label for="id_otros_medios" class="form-label">Otros Medios / Yape / Plin (S/)</label>
+                {{ form.otros_medios }}
+            </div>
+
+            <div class="form-group mb-3">
+                <label for="id_observaciones" class="form-label">Observaciones o Notas del Cuadre</label>
+                {{ form.observaciones }}
+            </div>
+
+            <div class="d-grid gap-2 d-md-block mt-4">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check-circle"></i> Finalizar Arqueo y Cerrar Caja
+                </button>
+                <a href="{% url 'caja:cierre_detail' object.pk %}" class="btn btn-secondary">
+                    Cancelar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -109,7 +109,7 @@
                                 {% if cat.items %}
                                 <div class="platos-grid">
                                     {% for item in cat.items %}
-                                    <button type="button" class="btn {{ cat.color }} pos-btn"
+                                    <button type="button" class="btn {{ cat.color }} pos-btn position-relative"
                                         data-bs-toggle="modal" data-bs-target="#modalItem"
                                         data-id="{{ item.id }}"
                                         data-nombre="{{ item.nombre }}"
@@ -117,15 +117,22 @@
                                         data-tipo="{{ cat.tipo }}"
                                         data-obs=""
                                         data-cant="1"
-                                        {% if cat.tipo == 'menu' %}data-tiene-entrada="true"{% endif %}>
+                                        {% if cat.tipo == 'menu' %}data-tiene-entrada="true"{% endif %}
+                                        
+                                        data-stock="{% if cat.tipo == 'producto' %}{{ item.stock }}{% else %}{{ item.stock_actual }}{% endif %}">
+                                        
                                         <span class="plato-nombre">{{ item.nombre }}</span>
-                                        <span class="plato-precio">
+                                        <span class="plato-precio d-block">
                                             {% if cat.tipo == 'producto' %}
-                                            S/ {{ item.precio_venta }}
+                                                S/ {{ item.precio_venta }}
                                             {% elif cat.tipo == 'entrada' %}
-                                            {% else %}
-                                            S/ {{ item.precio }}
+                                                {% else %}
+                                                S/ {{ item.precio }}
                                             {% endif %}
+                                        </span>
+                                        
+                                        <span class="badge bg-light text-dark mt-2" style="font-size: 0.75rem;">
+                                            Stock: {% if cat.tipo == 'producto' %}{{ item.stock }}{% else %}{{ item.stock_actual }}{% endif %}
                                         </span>
                                     </button>
                                     {% endfor %}

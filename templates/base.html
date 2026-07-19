@@ -67,6 +67,8 @@
                             <span>Cocina</span>
                         </a>
                     </li>
+
+                    {% if user.is_staff %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'inventario:producto_list' %}" data-page="inventario">
                             <i class="fas fa-boxes me-1"></i> 
@@ -85,7 +87,6 @@
                             <span>Reportes</span>
                         </a>
                     </li>
-                    {% if user.is_staff %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'administracion:configuracion_list' %}" data-page="configuracion">
                             <i class="fas fa-cog me-1"></i> 

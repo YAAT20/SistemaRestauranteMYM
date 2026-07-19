@@ -78,32 +78,19 @@ class PlatoListView(LoginRequiredMixin, ListView):
     context_object_name = 'platos'
 
     def get_queryset(self):
-        hoy = timezone.localdate()
-
-        # Entradas y menús solo si están configurados en el día
-        platos_dia_qs = PlatoDelDia.objects.filter(fecha=hoy).select_related('plato')
-        entradas_menus_desayunos = [
-            pd.plato for pd in platos_dia_qs
-            if pd.plato.tipo in ['entrada', 'menu', 'desayuno'] and pd.plato.disponible
-        ]
-
-        # Carta: disponibles normalmente
-        carta = list(Plato.objects.filter(tipo="carta"))
-
-        # Eliminar duplicados si una carta también fue configurada en el día
-        carta_ids = {p.id for p in carta}
-        carta_extra = [pd.plato for pd in platos_dia_qs if pd.plato.tipo == 'carta' and pd.plato.disponible and pd.plato.id not in carta_ids]
-
-        queryset = carta + carta_extra + entradas_menus_desayunos
-
-        # Búsqueda
-        q = self.request.GET.get("q")
-        if q:
-            queryset = [p for p in queryset if q.lower() in p.nombre.lower()]
-
         ahora = timezone.localtime().time()
         self.turno_tarde = (ahora >= time(15, 0) or ahora < time(8, 0))
 
+        queryset = Plato.objects.filter(
+            disponible=True,
+            stock_actual__gt=0
+        ).order_by("tipo", "nombre")
+
+        q = self.request.GET.get("q")
+        if q:
+            queryset = queryset.filter(nombre__icontains=q)
+        ahora = timezone.localtime().time()
+        self.turno_tarde = (ahora >= time(15, 0) or ahora < time(8, 0))
         return queryset
 
     def get_context_data(self, **kwargs):

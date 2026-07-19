@@ -60,6 +60,9 @@
 
     <!--  Menú (Entradas + Platos de menú) -->
     <div class="tab-pane fade" id="menu" role="tabpanel">
+        <button id="toggle-menu-entradas" class="btn btn-outline-secondary btn-sm mb-3">
+            <i class="fas fa-eye"></i> Mostrar Menús y Entradas
+        </button>
         <h5 class="fw-bold mt-3">Entradas</h5>
         {% include "menu/partials/_tabla_platos.html" with tipo="entrada" titulo="Entradas" %}
 
@@ -89,11 +92,8 @@
         // Preferencia guardada en localStorage
         const preferencia = localStorage.getItem("mostrarMenusEntradas");
 
-        // Django inyecta un string: "true" o "false"
-        const defaultVisible = "{{ turno_tarde|yesno:'false,true' }}";
-
-        // visible será true/false real
-        let visible = (preferencia !== null) ? (preferencia === "true") : (defaultVisible === "true");
+        // visible será true/false real, por defecto true
+        let visible = (preferencia !== null) ? (preferencia === "true") : true;
 
         function actualizarVista() {
             [...entradas, ...menus].forEach(sec => {

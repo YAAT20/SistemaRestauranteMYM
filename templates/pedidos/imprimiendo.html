@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enviando a Cocina...</title>
+    <meta http-equiv="refresh" content="3;url={% url 'pedidos:pedido_resumen' pedido_id %}">
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding-top: 20vh; background-color: #f8f9fa; }
+        .spinner { border: 4px solid rgba(0,0,0,0.1); width: 50px; height: 50px; border-radius: 50%; border-left-color: #0d6efd; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #dc3545; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="spinner"></div>
+    <h2>Procesando ticket...</h2>
+    <p>Abriendo impresora RawBT.</p>
+
+    <a href="#" id="btn-forzar" class="btn" style="display:none;">Forzar Impresión</a>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            let ticket = `{{ ticket|escapejs }}`;
+            let urlRetorno = "{% url 'pedidos:pedido_resumen' pedido_id %}";
+            
+            if (ticket && ticket.trim() !== "") {
+                let printUrl = "rawbt:print?text=" + encodeURIComponent(ticket);
+                
+                // Configurar el botón de emergencia
+                let btn = document.getElementById('btn-forzar');
+                btn.href = printUrl;
+                
+                // Intentar abrir RawBT
+                window.location.href = printUrl;
+                
+                // Mostrar el botón de emergencia si después de 1 segundo no ha cambiado de app
+                setTimeout(() => { btn.style.display = "inline-block"; }, 1000);
+
+                // Regresar al pedido después de 2.5 segundos
+                setTimeout(() => { window.location.href = urlRetorno; }, 2500);
+            } else {
+                window.location.href = urlRetorno;
+            }
+        });
+    </script>
+</body>
+</html>

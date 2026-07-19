@@ -9,13 +9,23 @@ SECRET_KEY = 'django-insecure-bdv3bfj2dgq9(6$ftu+#hp7r50w*=6*kof2+i=&8@mxh61^oyr
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['sistema.restmym.com', "144.91.106.137"]
 
 # Application definition
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.ngrok-free.app",
+    "https://sistema.restmym.com",
 ]
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Asegura que las cookies solo viajen por HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# Opcional, pero muy recomendado para evitar problemas de SameSite en móviles
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -42,6 +52,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'restaurantemym.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'restaurantemym.urls'
@@ -69,7 +80,7 @@ DATABASES = {
         'NAME': 'restaurantmym',
         'USER': 'adminmym',
         'PASSWORD': 'adminmym',
-        'HOST': '127.0.0.1',
+        'HOST': 'db',
         'PORT': '3306',
         'OPTIONS': {
             'charset': 'utf8mb4',

@@ -14,6 +14,7 @@ urlpatterns = [
     path('pedidos/<int:pk>/boleta/', views.ver_boleta_pdf, name='ver_boleta_pdf'),
 
     path('pedidos/<int:pk>/cambiar-estado/', views.cambiar_estado_pedido, name='cambiar_estado'),
+    path('<int:pk>/reimprimir/', views.reimprimir_pedido_view, name='reimprimir_pedido'),    
     path('mesa/<int:pk>/', views.MesaDetailView.as_view(), name='mesa_detail'),
     path("mesa/<int:pk>/fragment/", views.mesa_fragment, name="mesa_fragment"),
     path('mesas/crear/', views.MesaCreateView.as_view(), name='mesa_create'),

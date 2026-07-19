@@ -1,42 +1,68 @@
-from escpos.printer import Network
 from django.utils import timezone
+from django.db import transaction
 
 def imprimir_pedido_cocina(pedido):
-    """
-    Imprime solo los detalles no enviados (preparado=False) y luego los marca como preparados.
-    """
+
+    detalles_nuevos = pedido.detalles.filter(preparado=False)
+
+    if not detalles_nuevos.exists():
+        return False, "No hay ítems nuevos para enviar a cocina.", None
+
+    ya_enviado = pedido.detalles.filter(preparado=True).exists()
+    
+    lineas_ticket = []
+    lineas_ticket.append("***** AGREGADO AL PEDIDO *****" if ya_enviado else "***** PEDIDO NUEVO *****")
+    lineas_ticket.append(f"Mesa: {pedido.mesa.numero}")
+    lineas_ticket.append(f"Pedido #{pedido.numero_diario}")
+    lineas_ticket.append(f"Hora: {timezone.localtime().strftime('%H:%M:%S')}")
+    lineas_ticket.append("------------------------------")
+
+    for det in detalles_nuevos:
+        nombre = det.plato.nombre if det.plato else det.producto.nombre
+        lineas_ticket.append(f"{det.cantidad}x {nombre}")
+        if det.observaciones:
+            lineas_ticket.append(f"   (Obs: {det.observaciones})")
+
+    lineas_ticket.append("------------------------------")
+    lineas_ticket.append("\n\n\n")
+
+    texto_final = "\n".join(lineas_ticket)
+
     try:
-        detalles = pedido.detalles.filter(preparado=False)
-        if not detalles.exists():
-            return False, "No hay ítems nuevos para enviar a cocina."
-
-        p = Network("192.168.0.100", port=9100, timeout=10)
-
-        # Encabezado
-        p.set(align='center', bold=True, width=2, height=2)
-        p.text("*** COCINA ***\n")
-        p.set(align='left', bold=False, width=1, height=1)
-        p.text(f"Mesa: {pedido.mesa.numero}\n")
-        p.text(f"Pedido #{pedido.numero_diario}\n")
-        p.text(f"Hora: {timezone.localtime().strftime('%H:%M:%S')}\n")        
-        p.text("------------------------------\n")
-
-        # Imprimir ítems nuevos
-        for det in detalles:
-            nombre = det.plato.nombre if det.plato else det.producto.nombre
-            p.text(f"{det.cantidad}x {nombre}\n")
-            if det.observaciones:
-                p.text(f"   ({det.observaciones})\n")
-
-        p.text("------------------------------\n")
-        p.text("   Preparar con prioridad\n")
-        p.cut()
-        p._raw(b'\x1b\x0c')  # flush
-
-        # ✅ Marcar los detalles como enviados
-        ahora = timezone.localtime()        
-        detalles.update(preparado=True, hora_impresion=ahora)
-
-        return True, None
+        with transaction.atomic():
+            detalles_nuevos.update(
+                preparado=True,
+                hora_impresion=timezone.localtime()
+            )
+        return True, None, texto_final
     except Exception as e:
-        return False, str(e)
+        return False, f"Error de BD: {str(e)}", None
+    
+def reimprimir_pedido_completo(pedido):
+
+    todos_los_detalles = pedido.detalles.all()
+
+    if not todos_los_detalles.exists():
+        return False, "El pedido no tiene ítems para imprimir.", None
+
+    lineas_ticket = []
+    lineas_ticket.append("***** REIMPRESIÓN (COPIA) *****")
+    lineas_ticket.append(f"Mesa: {pedido.mesa.numero}")
+    lineas_ticket.append(f"Pedido #{pedido.numero_diario}")
+    lineas_ticket.append(f"Hora ref: {timezone.localtime().strftime('%H:%M:%S')}")
+    lineas_ticket.append("------------------------------")
+
+    for det in todos_los_detalles:
+        # Aseguramos de obtener el nombre ya sea un plato o un producto directo
+        nombre = det.plato.nombre if det.plato else det.producto.nombre
+        lineas_ticket.append(f"{det.cantidad}x {nombre}")
+        
+        if det.observaciones:
+            lineas_ticket.append(f"   (Obs: {det.observaciones})")
+
+    lineas_ticket.append("------------------------------")
+    lineas_ticket.append("\n\n\n")
+
+    texto_final = "\n".join(lineas_ticket)
+
+    return True, None, texto_final

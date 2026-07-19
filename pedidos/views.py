@@ -23,10 +23,11 @@ from datetime import timedelta
 from datetime import date, datetime
 from django.db import models
 import logging
-from pedidos.services import imprimir_pedido_cocina
+from pedidos.services import imprimir_pedido_cocina, reimprimir_pedido_completo
 
 logger = logging.getLogger(__name__)
 
+@login_required
 def home(request):
     return render(request, 'base.html')
 
@@ -363,40 +364,51 @@ class EditarPedidoView(LoginRequiredMixin, View):
 
     @transaction.atomic
     def post(self, request, pk):
+
         pedido = get_object_or_404(Pedido, id=pk, mozo=request.user)
 
-        # 🔹 Caso: pedido ya enviado a cocina → solo crear nuevos detalles
+        # Si ya fue enviado a cocina → SOLO agregar nuevos
         if pedido.enviado_cocina:
+
             for key, value in request.POST.items():
-                if key.startswith('plato_') or key.startswith('producto_'):
+
+                if key.startswith("plato_") or key.startswith("producto_"):
+
                     cantidad = int(value or 0)
+
                     if cantidad <= 0:
                         continue
 
-                    if key.startswith('plato_'):
-                        plato_id = int(key.split('_', 1)[1])
+                    if key.startswith("plato_"):
+
+                        plato_id = int(key.split("_")[1])
                         plato = get_object_or_404(Plato, id=plato_id)
-                        observaciones = request.POST.get(f'observaciones_{plato_id}', '')
 
-                        if plato.stock_actual < cantidad:
-                            raise ValueError(f"No hay suficiente stock para {plato.nombre}")
-                        plato.stock_actual -= cantidad
-                        plato.save()
+                        observaciones = request.POST.get(
+                            f"observaciones_{plato_id}", ""
+                        )
 
-                        pedido.agregar_plato(plato, cantidad, request.user, observaciones)
+                        # SOLO crear nuevo detalle
+                        pedido.agregar_plato(
+                            plato,
+                            cantidad,
+                            request.user,
+                            observaciones
+                        )
 
-                    elif key.startswith('producto_'):
-                        producto_id = int(key.split('_', 1)[1])
+                    else:
+
+                        producto_id = int(key.split("_")[1])
                         producto = get_object_or_404(Producto, id=producto_id)
 
-                        if producto.stock < cantidad:
-                            raise ValueError(f"No hay suficiente stock para {producto.nombre}")
-                        producto.stock -= cantidad
-                        producto.save()
+                        pedido.agregar_producto(
+                            producto,
+                            cantidad,
+                            request.user,
+                            f"Pedido #{pedido.id} (extra)"
+                        )
 
-                        pedido.agregar_producto(producto, cantidad, request.user, f"Pedido #{pedido.id} (extra cocina)")
-
-            messages.success(request, "Se añadieron nuevos ítems al pedido y fueron enviados a cocina.")
+            messages.success(request, "Nuevos ítems enviados a cocina.")
             return redirect("pedidos:pedido_resumen", pk=pedido.id)
 
         # 🔹 Caso: pedido aún no enviado → lógica normal (sumar cantidades)
@@ -579,24 +591,53 @@ def cambiar_estado_pedido(request, pk):
     pedido = get_object_or_404(Pedido, id=pk)
     nuevo_estado = request.POST.get('estado')
 
-    if request.user.rol not in ['MOZO', 'ADMIN']:
-        messages.error(request, 'No tienes permisos para cambiar el estado del pedido.')
+    if getattr(request.user, 'rol', None) not in ['MOZO', 'ADMIN']:
+        messages.error(request, 'No tienes permisos.')
         return redirect('pedidos:pedido_resumen', pk=pedido.id)
 
     try:
-        # Cambiar estado
-        mensaje = pedido.cambiar_estado(nuevo_estado, usuario=request.user)
-        messages.success(request, mensaje)
+        with transaction.atomic():
+            mensaje = pedido.cambiar_estado(nuevo_estado, usuario=request.user)
+            
+            if nuevo_estado == 'EN_COCINA':
+                ok, error, ticket = imprimir_pedido_cocina(pedido)
 
-        # 👉 Si es cocina, imprimir automáticamente
-        if nuevo_estado == 'EN_COCINA':
-            ok, error = imprimir_pedido_cocina(pedido)
-            if ok:
-                messages.success(request, f'Pedido #{pedido.numero_diario} enviado a cocina e impreso correctamente.')
+                if ok and ticket:
+                    # AQUÍ ESTÁ LA MAGIA: Bypasseamos la sesión y renderizamos la pantalla puente
+                    return render(request, 'pedidos/imprimiendo.html', {
+                        'ticket': ticket,
+                        'pedido_id': pedido.id
+                    })
+                elif not ok and error == "No hay ítems nuevos para enviar a cocina.":
+                    messages.info(request, error)
+                else:
+                    messages.error(request, f'Falló la impresión: {error}')
             else:
-                messages.error(request, f'El pedido cambió de estado pero no se imprimió: {error}')
+                messages.success(request, mensaje)
 
-    except ValueError as e:
-        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f'Error: {str(e)}')
+
+    return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
+@login_required
+@require_POST
+def reimprimir_pedido_view(request, pk):
+    pedido = get_object_or_404(Pedido, id=pk)
+
+    if getattr(request.user, 'rol', None) not in ['MOZO', 'ADMIN']:
+        messages.error(request, 'No tienes permisos.')
+        return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
+    ok, error, ticket = reimprimir_pedido_completo(pedido)
+
+    if ok and ticket:
+        # AQUÍ TAMBIÉN: Bypasseamos la sesión
+        return render(request, 'pedidos/imprimiendo.html', {
+            'ticket': ticket,
+            'pedido_id': pedido.id
+        })
+    else:
+        messages.error(request, error)
 
     return redirect('pedidos:pedido_resumen', pk=pedido.id)

@@ -2,15 +2,14 @@
 {% block title %}Cierres de Caja{% endblock %}
 {% block content %}
 <h2>Cierres de Caja</h2>
-<a class="btn btn-primary mb-3" href="{% url 'caja:iniciar_cierre' %}">Registrar Cierre</a>
-<table class="table">
+<table class="table table-striped align-middle">
     <thead>
         <tr>
             <th>Mozo</th>
             <th>Fecha</th>
             <th>Turno</th>
-            <th>Total</th>
-            <th></th>
+            <th>Total Sistema</th>
+            <th>Estado</th> <th>Acciones</th>
         </tr>
     </thead>
     <tbody>
@@ -20,11 +19,16 @@
             <td>{{ c.fecha }}</td>
             <td>{{ c.turno }}</td>
             <td>S/ {{ c.total_sistema|floatformat:2 }}</td>
-            <td><a class="btn btn-sm btn-outline-primary" href="{% url 'caja:cierre_detail' c.id %}">Ver</a></td>
+            <td>
+                <span class="badge bg-{% if c.estado == 'CERRADO' %}success{% elif c.estado == 'EFECTIVO_VERIFICADO' %}info{% else %}warning{% endif %}">
+                    {{ c.get_estado_display }}
+                </span>
+            </td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{% url 'caja:cierre_detail' c.id %}"><i class="fas fa-eye"></i> Ver</a></td>
         </tr>
         {% empty %}
         <tr>
-            <td colspan="5">No hay cierres registrados.</td>
+            <td colspan="6" class="text-center">No hay cierres registrados.</td>
         </tr>
         {% endfor %}
     </tbody>
