@@ -1,8 +1,10 @@
+from decimal import Decimal
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
-from .models import Mesa, Pedido, Cliente, Pago
+from .models import Mesa, Pedido, Cliente, Pago, DetallePedido, PagoDetalle
 from menu.models import Plato
 from administracion.models import ConfiguracionRestaurante
 from django.shortcuts import get_object_or_404
@@ -518,19 +520,58 @@ def registrar_pago_pedido(request, pedido_id):
     
     if request.method == 'POST':
         metodo = request.POST.get('metodo')
-        monto = request.POST.get('monto')
         referencia = request.POST.get('referencia')
         
+        items_seleccionados = []
+        for key, value in request.POST.items():
+            if key.startswith('cant_detalle_'):
+                detalle_id = int(key.split('_')[2])
+                cant = int(value or 0)
+                if cant > 0:
+                    detalle = get_object_or_404(DetallePedido, pk=detalle_id, pedido=pedido)
+                    items_seleccionados.append((detalle, cant))
+        
         try:
-            pedido.registrar_pago(
+            pedido.registrar_pago_dividido(
                 metodo=metodo,
-                monto=monto,
+                items_seleccionados=items_seleccionados,
                 usuario=request.user,
                 referencia=referencia
             )
-            messages.success(request, "Pago registrado correctamente.")
+            messages.success(request, "Subcuenta / Pago registrado correctamente.")
         except ValidationError as e:
-            messages.error(request, e.message)
+            messages.error(request, e.message if hasattr(e, 'message') else ", ".join(e.flat_messages()))
+            
+    return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
+@login_required
+@transaction.atomic
+def registrar_pago_dividido(request, pedido_id):
+    pedido = get_object_or_404(Pedido, pk=pedido_id)
+    
+    if request.method == 'POST':
+        metodo = request.POST.get('metodo')
+        referencia = request.POST.get('referencia')
+        
+        items_seleccionados = []
+        for key, value in request.POST.items():
+            if key.startswith('cant_detalle_'):
+                detalle_id = int(key.split('_')[2])
+                cant = int(value or 0)
+                if cant > 0:
+                    detalle = get_object_or_404(DetallePedido, pk=detalle_id, pedido=pedido)
+                    items_seleccionados.append((detalle, cant))
+        
+        try:
+            pedido.registrar_pago_dividido(
+                metodo=metodo,
+                items_seleccionados=items_seleccionados,
+                usuario=request.user,
+                referencia=referencia
+            )
+            messages.success(request, "Subcuenta / Pago registrado correctamente.")
+        except ValidationError as e:
+            messages.error(request, e.message if hasattr(e, 'message') else ", ".join(e.flat_messages()))
             
     return redirect('pedidos:pedido_resumen', pk=pedido.id)
 

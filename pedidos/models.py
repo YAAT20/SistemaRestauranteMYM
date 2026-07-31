@@ -48,20 +48,16 @@ class Pedido(models.Model):
         ('MAÑANA', 'Mañana (8am-3pm)'),
         ('TARDE', 'Tarde (3pm-12am)')
     )
-    # 🆕 Tipos de pedido (Local o Para Llevar)
     TIPOS_PEDIDO = (
         ('LOCAL', 'Consumo en Local'),
         ('LLEVAR', 'Para Llevar'),
     )
+    
     tipo = models.CharField(max_length=10, choices=TIPOS_PEDIDO, default='LOCAL')
-    
     turno = models.CharField(max_length=10, choices=TURNOS, blank=True)
-    
-    # ⚠️ Mesa opcional (null=True, blank=True) para pedidos Para Llevar
-    mesa = models.ForeignKey(Mesa, on_delete=models.SET_NULL, null=True, blank=True, related_name="pedidos")
-    
+    mesa = models.ForeignKey('Mesa', on_delete=models.SET_NULL, null=True, blank=True, related_name="pedidos")
     mozo = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='pedidos')
-    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
+    cliente = models.ForeignKey('Cliente', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     fecha_hora = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=15, choices=ESTADOS_PEDIDO, default='PENDIENTE')
     observaciones = models.TextField(blank=True)
@@ -160,6 +156,15 @@ class Pedido(models.Model):
     def total_pagado(self):
         return sum(pago.monto for pago in self.pagos.all())
 
+    def cantidad_pagada_detalle(self, detalle_id):
+        pagos_detalles = PagoDetalle.objects.filter(detalle_pedido_id=detalle_id)
+        return sum(pd.cantidad for pd in pagos_detalles)
+
+    def saldo_detalle(self, detalle):
+        pagado = self.cantidad_pagada_detalle(detalle.id)
+        pendiente_cant = detalle.cantidad - pagado
+        return pendiente_cant * detalle.precio_unitario
+
     @property
     def saldo_pendiente(self):
         if self.es_cortesia:
@@ -187,7 +192,58 @@ class Pedido(models.Model):
             self.save()
 
         return pago
+    
+    @transaction.atomic
+    def registrar_pago_dividido(self, metodo, items_seleccionados, usuario, referencia=None):
+        if self.es_cortesia:
+            raise ValidationError("Este pedido es de cortesía, no se puede registrar pagos.")
 
+        monto_total_pago = Decimal('0.00')
+        detalles_a_procesar = []
+
+        for detalle, cant_a_pagar in items_seleccionados:
+            cant_a_pagar = int(cant_a_pagar)
+            if cant_a_pagar <= 0:
+                continue
+
+            cant_ya_pagada = self.cantidad_pagada_detalle(detalle.id)
+            pendiente_cant = detalle.cantidad - cant_ya_pagada
+
+            if cant_a_pagar > pendiente_cant:
+                raise ValidationError(f"La cantidad a pagar para {detalle} supera el saldo pendiente de ese ítem.")
+
+            subtotal_parcial = cant_a_pagar * detalle.precio_unitario
+            monto_total_pago += subtotal_parcial
+            detalles_a_procesar.append((detalle, cant_a_pagar, subtotal_parcial))
+
+        if monto_total_pago <= 0:
+            raise ValidationError("Debe seleccionar al menos un ítem válido para procesar el pago.")
+
+        # 1. Crear el registro principal del Pago
+        pago = Pago.objects.create(
+            pedido=self,
+            metodo=metodo,
+            monto=monto_total_pago,
+            referencia=referencia,
+            usuario=usuario
+        )
+
+        # 2. Relacionar el pago con las cantidades específicas de cada detalle
+        for detalle, cantidad, subtotal in detalles_a_procesar:
+            PagoDetalle.objects.create(
+                pago=pago,
+                detalle_pedido=detalle,
+                cantidad=cantidad,
+                monto_parcial=subtotal
+            )
+
+        # 3. Si ya no queda saldo pendiente en ningún ítem, marcar como PAGADO
+        if self.saldo_pendiente == 0:
+            self.estado = 'PAGADO'
+            self.fecha_pago = timezone.now()
+            self.save()
+
+        return pago
 
 class DetallePedido(models.Model):
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='detalles')
@@ -209,6 +265,23 @@ class DetallePedido(models.Model):
     @property
     def subtotal(self):
         return self.cantidad * self.precio_unitario
+
+    @property
+    def cantidad_pagada(self):
+        """Suma la cantidad de este ítem cubierta mediante pagos divididos."""
+        total_por_detalles = sum(pd.cantidad for pd in self.pagos_asociados.all())
+        
+        # Respaldo de seguridad: Si el pedido fue pagado totalmente de forma 
+        # antigua (sin PagoDetalle), asumimos que todo está pagado.
+        if total_por_detalles == 0 and self.pedido.estado == 'PAGADO':
+            return self.cantidad
+            
+        return total_por_detalles
+
+    @property
+    def cantidad_pendiente(self):
+        """Calcula cuántas unidades de este ítem faltan por cobrar."""
+        return max(0, self.cantidad - self.cantidad_pagada)
 
     def save(self, *args, **kwargs):
         if not self.pk and not self.precio_unitario:
@@ -253,3 +326,12 @@ class Pago(models.Model):
 
     def __str__(self):
         return f"Pago #{self.id} - {self.get_metodo_display()} S/ {self.monto} (Pedido #{self.pedido.numero_diario or self.pedido.id})"
+
+class PagoDetalle(models.Model):
+    pago = models.ForeignKey(Pago, on_delete=models.CASCADE, related_name='detalles_cubiertos')
+    detalle_pedido = models.ForeignKey(DetallePedido, on_delete=models.CASCADE, related_name='pagos_asociados')
+    cantidad = models.PositiveIntegerField(help_text="Cantidad de este ítem cubierto por el pago")
+    monto_parcial = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"Pago #{self.pago.id} -> {self.cantidad}x de Detalle #{self.detalle_pedido.id}"
