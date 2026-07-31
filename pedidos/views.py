@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
-from .models import Mesa, Pedido, Cliente
+from .models import Mesa, Pedido, Cliente, Pago
 from menu.models import Plato
 from administracion.models import ConfiguracionRestaurante
 from django.shortcuts import get_object_or_404
@@ -24,6 +24,7 @@ from datetime import date, datetime
 from django.db import models
 import logging
 from pedidos.services import imprimir_pedido_cocina, reimprimir_pedido_completo
+from django.core.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -237,8 +238,11 @@ class CrearPedidoView(View):
 
     def get(self, request):
         mesa_id = request.GET.get('mesa')
+        tipo_inicial = request.GET.get('tipo', 'LOCAL')  # 🆕 Permite forzar el tipo por URL si se desea
+
         if mesa_id:
             mesas = Mesa.objects.filter(models.Q(id=mesa_id) | models.Q(estado='LIBRE'))
+            tipo_inicial = 'LOCAL'  # Si viene con mesa, por fuerza es local
         else:
             mesas = Mesa.objects.filter(estado='LIBRE')
 
@@ -265,12 +269,14 @@ class CrearPedidoView(View):
             'mesas': mesas,
             'categorias': categorias,
             'mesa_id': mesa_id,
+            'tipo_inicial': tipo_inicial,  # 🆕 Enviamos esto a la plantilla
             'pedido_json': json.dumps([], cls=DjangoJSONEncoder),
             'turno_tarde': turno_tarde,
         })
 
     @transaction.atomic
     def post(self, request):
+        tipo_pedido = request.POST.get('tipo', 'LOCAL')
         mesa_id = request.POST.get('mesa')
         nombre_cliente = request.POST.get('cliente_nombre', '').strip()
         telefono_cliente = request.POST.get('cliente_telefono', '').strip()
@@ -282,17 +288,21 @@ class CrearPedidoView(View):
                 defaults={'nombre': nombre_cliente}
             )
 
-        mesa = get_object_or_404(Mesa, id=mesa_id)
-
+        mesa = None
+        if tipo_pedido == 'LOCAL':
+            if not mesa_id:
+                raise ValueError("Debe seleccionar una mesa para pedidos en local.")
+            mesa = get_object_or_404(Mesa, id=mesa_id)
+            mesa.estado = 'OCUPADA'
+            mesa.save()
+        
         pedido = Pedido.objects.create(
+            tipo=tipo_pedido,
             mesa=mesa,
             mozo=request.user,
             cliente=cliente,
             estado='PENDIENTE',
         )
-
-        mesa.estado = 'OCUPADA'
-        mesa.save()
 
         # Procesar platos y productos
         for key, value in request.POST.items():
@@ -303,8 +313,6 @@ class CrearPedidoView(View):
                     continue
                 plato = get_object_or_404(Plato, id=plato_id)
                 observaciones = request.POST.get(f'observaciones_{plato_id}', '')
-
-                # Aquí ya no hay lógica de "extra" ni asociaciones
                 pedido.agregar_plato(plato, cantidad, request.user, observaciones)
 
             elif key.startswith('producto_'):
@@ -500,8 +508,68 @@ class PedidoResumenView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['detalles'] = self.object.detalles.all()
+        context['productos_envases'] = Producto.objects.filter(es_envase=True, stock__gt=0, activo=True)
+        
         return context
+
+@login_required
+def registrar_pago_pedido(request, pedido_id):
+    pedido = get_object_or_404(Pedido, pk=pedido_id)
     
+    if request.method == 'POST':
+        metodo = request.POST.get('metodo')
+        monto = request.POST.get('monto')
+        referencia = request.POST.get('referencia')
+        
+        try:
+            pedido.registrar_pago(
+                metodo=metodo,
+                monto=monto,
+                usuario=request.user,
+                referencia=referencia
+            )
+            messages.success(request, "Pago registrado correctamente.")
+        except ValidationError as e:
+            messages.error(request, e.message)
+            
+    return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
+@login_required
+def eliminar_pago(request, pago_id):
+    pago = get_object_or_404(Pago, pk=pago_id)
+    pedido = pago.pedido
+    
+    if request.method == 'POST':
+        if pedido.estado == 'PAGADO':
+            pedido.estado = 'COMPLETO'
+            pedido.fecha_pago = None
+            pedido.save()
+            
+        pago.delete()
+        messages.success(request, "Pago eliminado correctamente.")
+        
+    return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
+@login_required
+def agregar_envase_pedido(request, pedido_id, producto_id):
+    pedido = get_object_or_404(Pedido, pk=pedido_id)
+    producto = get_object_or_404(Producto, pk=producto_id)
+    
+    if request.method == 'POST':
+        try:
+            pedido.agregar_producto(
+                producto=producto,
+                cantidad=1,
+                usuario=request.user,
+                descripcion=f"Envase para pedido #{pedido.numero_diario or pedido.id}"
+            )
+            messages.success(request, f"Se añadió 1 {producto.nombre} correctamente.")
+        except ValueError as e:
+            messages.error(request, str(e))
+            
+    # CAMBIA 'pedidos:detalle_pedido' por 'pedidos:pedido_resumen'
+    return redirect('pedidos:pedido_resumen', pk=pedido.id)
+
 def ver_boleta_pdf(request, pk):
     pedido = get_object_or_404(Pedido, id=pk)
     detalles = pedido.detalles.all()

@@ -9,23 +9,13 @@ SECRET_KEY = 'django-insecure-bdv3bfj2dgq9(6$ftu+#hp7r50w*=6*kof2+i=&8@mxh61^oyr
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['sistema.restmym.com', "144.91.106.137"]
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://sistema.restmym.com",
+    "https://*.ngrok-free.app",
 ]
-
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-# Asegura que las cookies solo viajen por HTTPS
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-# Opcional, pero muy recomendado para evitar problemas de SameSite en móviles
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SAMESITE = 'Lax'
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -52,7 +42,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'restaurantemym.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'restaurantemym.urls'
@@ -76,16 +65,12 @@ WSGI_APPLICATION = 'restaurantemym.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'restaurantmym',
-        'USER': 'adminmym',
-        'PASSWORD': 'adminmym',
-        'HOST': 'db',
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'db_restaurante',
+        'USER': 'yelts_admin',
+        'PASSWORD': 'yeltsdbroot',
+        'HOST': 'db_central',
+        'PORT': '5432',
     }
 }
 

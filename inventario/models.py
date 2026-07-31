@@ -9,7 +9,8 @@ class Producto(models.Model):
     precio_compra = models.DecimalField(max_digits=7, decimal_places=2)
     precio_venta = models.DecimalField(max_digits=7, decimal_places=2)
     activo = models.BooleanField(default=True)
-
+    es_envase = models.BooleanField(default=False, help_text="Marcar si es un táper, bolsa o caja para llevar")
+    
     @transaction.atomic
     def ajustar_stock(self, cantidad, tipo, usuario=None, pedido=None, descripcion=None):
         if tipo == MovimientoInventario.TIPO_SALIDA and self.stock < cantidad:

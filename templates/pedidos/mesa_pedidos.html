@@ -3,12 +3,14 @@
 
 {% block content %}
 <div class="container my-4">
-    <!-- Encabezado -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4">
         <h2 class="fw-bold text-primary mb-3 mb-md-0">
             <i class="fas fa-utensils me-2"></i> Mesas del Restaurante
         </h2>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'pedidos:crear_pedido' %}?tipo=LLEVAR" class="btn btn-info text-white shadow-sm">
+                <i class="fas fa-shopping-bag me-1"></i> Pedido Para Llevar
+            </a>
             <button class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalCrearMesa">
                 <i class="fas fa-plus me-1"></i> Crear Mesa
             </button>
@@ -18,7 +20,6 @@
         </div>
     </div>
 
-    <!-- Grid de mesas -->
     <div class="row g-3 row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5">
         {% for mesa_info in mesas_info %}
         <div class="col">
@@ -33,7 +34,6 @@
                         </i>
                     </div>
 
-                    <!-- Nombre y pedidos -->
                     <h5 class="card-title fw-bold mb-1">
                         Mesa {{ mesa_info.mesa.numero }}
                         {% if mesa_info.pedidos|length > 0 %}
@@ -41,7 +41,6 @@
                         {% endif %}
                     </h5>
 
-                    <!-- Estado -->
                     <p class="small mb-2">
                         {% if mesa_info.estado == "LIBRE" %}
                         <span class="badge bg-success px-3 py-1">Libre</span>
@@ -50,7 +49,6 @@
                         {% endif %}
                     </p>
 
-                    <!-- Acciones -->
                     <div class="d-grid gap-2 mt-auto">
                         <a href="{% url 'pedidos:crear_pedido' %}?mesa={{ mesa_info.mesa.id }}"
                             class="btn btn-sm btn-primary shadow-sm">
@@ -74,7 +72,6 @@
     </div>
 </div>
 
-<!-- Modal de pedidos por mesa -->
 <div class="modal fade" id="modalMesa" tabindex="-1" aria-labelledby="modalMesaLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg rounded-3">
@@ -95,7 +92,6 @@
     </div>
 </div>
 
-<!-- Modal para crear mesa -->
 <div class="modal fade" id="modalCrearMesa" tabindex="-1" aria-labelledby="modalCrearMesaLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 shadow-lg rounded-3">
@@ -127,7 +123,6 @@
     </div>
 </div>
 
-<!-- Script AJAX -->
 <script>
     document.addEventListener("DOMContentLoaded", () => {
         const modal = document.getElementById("modalMesa");

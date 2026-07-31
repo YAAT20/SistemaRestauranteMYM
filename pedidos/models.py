@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from menu.models import Plato
 from usuarios.models import Usuario
 from django.utils import timezone
@@ -7,6 +8,7 @@ from django.db import transaction
 from datetime import time
 from urllib.parse import quote
 from datetime import datetime, time
+from decimal import Decimal
 
 class Mesa(models.Model):
     ESTADOS = (
@@ -46,9 +48,19 @@ class Pedido(models.Model):
         ('MAÑANA', 'Mañana (8am-3pm)'),
         ('TARDE', 'Tarde (3pm-12am)')
     )
+    # 🆕 Tipos de pedido (Local o Para Llevar)
+    TIPOS_PEDIDO = (
+        ('LOCAL', 'Consumo en Local'),
+        ('LLEVAR', 'Para Llevar'),
+    )
+    tipo = models.CharField(max_length=10, choices=TIPOS_PEDIDO, default='LOCAL')
+    
     turno = models.CharField(max_length=10, choices=TURNOS, blank=True)
-    mesa = models.ForeignKey(Mesa, on_delete=models.CASCADE, related_name="pedidos")
-    mozo = models.ForeignKey(Usuario, limit_choices_to={'rol': Usuario.ROL_MOZO}, on_delete=models.CASCADE, related_name='pedidos')
+    
+    # ⚠️ Mesa opcional (null=True, blank=True) para pedidos Para Llevar
+    mesa = models.ForeignKey(Mesa, on_delete=models.SET_NULL, null=True, blank=True, related_name="pedidos")
+    
+    mozo = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='pedidos')
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     fecha_hora = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=15, choices=ESTADOS_PEDIDO, default='PENDIENTE')
@@ -58,23 +70,22 @@ class Pedido(models.Model):
     es_cortesia = models.BooleanField(default=False, help_text="Si es True, no suma en ventas ni caja")
     numero_diario = models.PositiveIntegerField(editable=False, null=True, blank=True, default=None)
 
+    def clean(self):
+        super().clean()
+        if self.tipo == 'LOCAL' and not self.mesa:
+            raise ValidationError("Los pedidos de consumo en local deben tener una mesa asignada.")
+
     def save(self, *args, **kwargs):
+        self.full_clean()
         ahora_local = timezone.localtime(timezone.now())
         
         if not self.turno:
             self.turno = 'MAÑANA' if time(8, 0) <= ahora_local.time() < time(15, 0) else 'TARDE'
         
         if self.pk is None and self.numero_diario is None:
-            # Fecha local de Perú
             fecha_local = ahora_local.date()
-            
-            # Rango del día en timezone local
-            inicio_dia = timezone.make_aware(
-                datetime.combine(fecha_local, time.min)
-            )
-            fin_dia = timezone.make_aware(
-                datetime.combine(fecha_local, time.max)
-            )
+            inicio_dia = timezone.make_aware(datetime.combine(fecha_local, time.min))
+            fin_dia = timezone.make_aware(datetime.combine(fecha_local, time.max))
             
             with transaction.atomic():
                 ultimo = Pedido.objects.select_for_update().filter(
@@ -91,23 +102,11 @@ class Pedido(models.Model):
     @transaction.atomic
     def agregar_plato(self, plato, cantidad, usuario, observaciones=""):
         plato = Plato.objects.select_for_update().get(pk=plato.pk)
-
-        # Siempre descuenta stock
-        plato.descontar_stock(
-            cantidad=cantidad,
-            usuario=usuario,
-            pedido=self
-        )
-
-        # Siempre cobra el precio del plato
+        plato.descontar_stock(cantidad=cantidad, usuario=usuario, pedido=self)
         precio = plato.precio or 0
 
         DetallePedido.objects.create(
-            pedido=self,
-            plato=plato,
-            cantidad=cantidad,
-            precio_unitario=precio,
-            observaciones=observaciones
+            pedido=self, plato=plato, cantidad=cantidad, precio_unitario=precio, observaciones=observaciones
         )
 
     @transaction.atomic
@@ -117,68 +116,33 @@ class Pedido(models.Model):
             raise ValueError(f"No hay suficiente stock para {producto.nombre}")
 
         producto.ajustar_stock(
-            cantidad=cantidad,
-            tipo=MovimientoInventario.TIPO_SALIDA,
-            usuario=usuario,
-            pedido=self,
-            descripcion=descripcion or f"Pedido #{self.id}"
+            cantidad=cantidad, tipo=MovimientoInventario.TIPO_SALIDA, usuario=usuario, pedido=self, descripcion=descripcion or f"Pedido #{self.id}"
         )
 
         DetallePedido.objects.create(
-            pedido=self,
-            producto=producto,
-            cantidad=cantidad,
-            precio_unitario=producto.precio_venta
+            pedido=self, producto=producto, cantidad=cantidad, precio_unitario=producto.precio_venta
         )
 
     @transaction.atomic
     def reponer_detalle(self, detalle, usuario):
-        """
-        Reponer stock exactamente según lo consumido.
-        """
         if detalle.plato:
-            detalle.plato.reponer_stock(
-                cantidad=detalle.cantidad,
-                usuario=usuario,
-                descripcion=f"Reversión edición pedido #{self.id}"
-            )
+            detalle.plato.reponer_stock(cantidad=detalle.cantidad, usuario=usuario, descripcion=f"Reversión edición pedido #{self.id}")
         elif detalle.producto:
-            detalle.producto.ajustar_stock(
-                cantidad=detalle.cantidad,
-                tipo=MovimientoInventario.TIPO_ENTRADA,
-                usuario=usuario,
-                pedido=self,
-                descripcion=f"Reversión edición pedido #{self.id}"
-            )
+            detalle.producto.ajustar_stock(cantidad=detalle.cantidad, tipo=MovimientoInventario.TIPO_ENTRADA, usuario=usuario, pedido=self, descripcion=f"Reversión edición pedido #{self.id}")
             
     @transaction.atomic
     def cambiar_estado(self, nuevo_estado, usuario=None):
-        """
-        Cambia el estado del pedido y maneja reposición de stock si se cancela.
-        """
         estados_validos = [e[0] for e in self.ESTADOS_PEDIDO]
         if nuevo_estado not in estados_validos:
             raise ValueError(f"Estado inválido: {nuevo_estado}")
 
-        # Si se cancela → reponer stock
         if nuevo_estado == 'CANCELADO' and self.estado != 'CANCELADO':
             for detalle in self.detalles.all():
                 if detalle.plato:
-                    detalle.plato.reponer_stock(
-                        cantidad=detalle.cantidad,
-                        usuario=usuario,
-                        descripcion=f"Reversión por cancelación pedido #{self.numero_diario}"
-                    )
+                    detalle.plato.reponer_stock(cantidad=detalle.cantidad, usuario=usuario, descripcion=f"Reversión por cancelación pedido #{self.numero_diario}")
                 elif detalle.producto:
-                    detalle.producto.ajustar_stock(
-                        cantidad=detalle.cantidad,
-                        tipo=MovimientoInventario.TIPO_ENTRADA,
-                        usuario=usuario,
-                        pedido=self,
-                        descripcion=f"Reversión por cancelación pedido #{self.numero_diario}"
-                    )
+                    detalle.producto.ajustar_stock(cantidad=detalle.cantidad, tipo=MovimientoInventario.TIPO_ENTRADA, usuario=usuario, pedido=self, descripcion=f"Reversión por cancelación pedido #{self.numero_diario}")
 
-        # Actualiza estado
         self.estado = nuevo_estado
         if nuevo_estado == 'EN_COCINA':
             self.enviado_cocina = True
@@ -191,6 +155,39 @@ class Pedido(models.Model):
         if self.es_cortesia:
             return 0
         return sum(detalle.subtotal for detalle in self.detalles.all())
+
+    @property
+    def total_pagado(self):
+        return sum(pago.monto for pago in self.pagos.all())
+
+    @property
+    def saldo_pendiente(self):
+        if self.es_cortesia:
+            return 0
+        return max(Decimal('0.00'), self.total - self.total_pagado)
+
+    def registrar_pago(self, metodo, monto, usuario, referencia=None):
+        if self.es_cortesia:
+            raise ValidationError("Este pedido es de cortesía, no se puede registrar pagos.")
+        
+        monto = Decimal(str(monto))
+        if monto <= 0:
+            raise ValidationError("El monto a pagar debe ser mayor a 0.")
+
+        if monto > self.saldo_pendiente:
+            raise ValidationError(f"El monto (S/ {monto}) excede el saldo pendiente (S/ {self.saldo_pendiente}).")
+
+        pago = Pago.objects.create(
+            pedido=self, metodo=metodo, monto=monto, referencia=referencia, usuario=usuario
+        )
+
+        if self.saldo_pendiente == 0:
+            self.estado = 'PAGADO'
+            self.fecha_pago = timezone.now()
+            self.save()
+
+        return pago
+
 
 class DetallePedido(models.Model):
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='detalles')
@@ -235,3 +232,24 @@ class Boleta(models.Model):
 
     def __str__(self):
         return f"Boleta {self.numero}"
+
+class Pago(models.Model):
+    METODOS_PAGO = (
+        ('EFECTIVO', 'Efectivo'),
+        ('YAPE', 'Yape'),
+        ('PLIN', 'Plin'),
+        ('TARJETA_DEBITO', 'Tarjeta de Débito'),
+        ('TARJETA_CREDITO', 'Tarjeta de Crédito'),
+        ('TRANSFERENCIA', 'Transferencia Bancaria'),
+        ('OTRO', 'Otro'),
+    )
+
+    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='pagos')
+    metodo = models.CharField(max_length=20, choices=METODOS_PAGO)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    referencia = models.CharField(max_length=100, blank=True, null=True, help_text="Número de operación, voucher o Yape")
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, help_text="Cajero o mozo que registró el pago")
+
+    def __str__(self):
+        return f"Pago #{self.id} - {self.get_metodo_display()} S/ {self.monto} (Pedido #{self.pedido.numero_diario or self.pedido.id})"

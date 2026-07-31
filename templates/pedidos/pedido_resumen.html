@@ -1,14 +1,19 @@
 {% extends 'base.html' %}
-{% block title %}Pedido #{{ pedido.numero_diario }} — Mesa {{ pedido.mesa.numero }}{% endblock %}
+{% block title %}Pedido #{{ pedido.numero_diario }} — {% if pedido.tipo == 'LLEVAR' %}Para Llevar{% else %}Mesa {{ pedido.mesa.numero }}{% endif %}{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-
     <!-- Encabezado -->
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="mb-0">
             <i class="fas fa-receipt text-primary"></i>
-            Pedido #{{ pedido.numero_diario }} — Mesa {{ pedido.mesa.numero }}
+            Pedido #{{ pedido.numero_diario }} 
+            <!-- 🆕 Indicador visual inteligente -->
+            {% if pedido.tipo == 'LLEVAR' %}
+                <span class="badge bg-info text-dark ms-2"><i class="fas fa-shopping-bag"></i> Para Llevar</span>
+            {% else %}
+                <span class="badge bg-primary ms-2"><i class="fas fa-chair"></i> Mesa {{ pedido.mesa.numero }}</span>
+            {% endif %}
         </h2>
         <div class="d-flex gap-2">
             <span class="badge 
@@ -42,6 +47,29 @@
     <div class="row">
         <!-- Columna izquierda: Detalles -->
         <div class="col-md-8 mb-3">
+
+            <!-- 🆕 BLOQUE: Botones rápidos para añadir Táperes si es Para Llevar -->
+            {% if pedido.tipo == 'LLEVAR' and not pedido.enviado_cocina %}
+            <div class="card shadow-sm mb-3 border-info">
+                <div class="card-header bg-info text-white py-2">
+                    <i class="fas fa-box-open"></i> Control de Envases / Táperes Para Llevar
+                </div>
+                <div class="card-body bg-light py-2">
+                    <p class="small text-muted mb-2">Haz clic para agregar envases (descuenta stock del inventario automáticamente):</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for envase in productos_envases %}
+                        <form method="post" action="{% url 'pedidos:agregar_envase' pedido.id envase.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-info btn-sm bg-white">
+                                + 1 {{ envase.nombre }} <span class="badge bg-secondary">S/ {{ envase.precio_venta|floatformat:2 }}</span>
+                            </button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="card shadow-sm">
                 <div class="card-header bg-dark text-white">
                     <i class="fas fa-utensils"></i> Detalles del Pedido
@@ -104,57 +132,119 @@
             </div>
         </div>
 
-        <!-- Columna derecha: Acciones -->
+        <!-- Columna derecha: Resumen de Pagos y Acciones -->
         <div class="col-md-4">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm mb-3">
                 <div class="card-header bg-secondary text-white">
-                    <i class="fas fa-cogs"></i> Acciones
+                    <i class="fas fa-wallet"></i> Resumen de Pagos
                 </div>
                 <div class="card-body">
+                    <!-- Control de saldos -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Total Pedido:</span>
+                            <strong>S/ {{ pedido.total|floatformat:2 }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1 text-success">
+                            <span>Total Pagado:</span>
+                            <strong>S/ {{ pedido.total_pagado|floatformat:2 }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2 text-danger">
+                            <span>Saldo Pendiente:</span>
+                            <strong>S/ {{ pedido.saldo_pendiente|floatformat:2 }}</strong>
+                        </div>
+                        
+                        {% widthratio pedido.total_pagado pedido.total 100 as porcentaje %}
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ porcentaje|default:0 }}%;"></div>
+                        </div>
+                    </div>
 
-                    <!-- Botones principales -->
+                    <!-- Lista de pagos ya efectuados con botón de eliminar -->
+                    {% if pedido.pagos.all %}
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered mb-0 align-middle" style="font-size: 0.85rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Método</th>
+                                    <th class="text-end">Monto</th>
+                                    <th class="text-center" style="width: 30px;"><i class="fas fa-trash"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pago in pedido.pagos.all %}
+                                <tr>
+                                    <td>
+                                        {{ pago.get_metodo_display }}
+                                        {% if pago.referencia %}<br><small class="text-muted">Ref: {{ pago.referencia }}</small>{% endif %}
+                                    </td>
+                                    <td class="text-end">S/ {{ pago.monto|floatformat:2 }}</td>
+                                    <td class="text-center">
+                                        <form method="post" action="{% url 'pedidos:eliminar_pago' pago.id %}" onsubmit="return confirm('¿Eliminar este pago de S/ {{ pago.monto|floatformat:2 }}?');" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-outline-danger btn-sm border-0 py-0 px-1" title="Eliminar pago">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% if pedido.saldo_pendiente > 0 and not pedido.es_cortesia %}
+                    <div class="d-grid">
+                        <button type="button" class="btn btn-success btn-sm d-flex justify-content-center align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#modalRegistrarPago">
+                            <p class="mb-0"><i class="fas fa-cash-register"></i> Registrar Pago / Dividir Cuenta</p>
+                        </button>
+                    </div>  
+                    {% elif pedido.saldo_pendiente == 0 and not pedido.es_cortesia %}
+                    <div class="alert alert-success py-2 text-center mb-0 small">
+                        <i class="fas fa-check-circle"></i> Cuenta pagada en su totalidad
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Acciones Generales -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <i class="fas fa-cogs"></i> Acciones del Pedido
+                </div>
+                <div class="card-body">
                     <div class="d-grid gap-2 mb-3">
                         <a href="{% url 'pedidos:ver_boleta_pdf' pedido.id %}" target="_blank"
-                           class="btn btn-outline-primary btn-sm d-flex justify-content-center align-items-center gap-2"
-                           data-bs-toggle="tooltip" title="Ver o imprimir la boleta en PDF">
-                            <i class="fas fa-file-pdf"></i> Boleta
+                        class="btn btn-outline-primary btn-sm d-flex justify-content-center align-items-center gap-2">
+                            <i class="fas fa-file-pdf"></i> Ver Boleta PDF
                         </a>
-
-                        <form method="post" action="{% url 'pedidos:marcar_como_pagado' pedido.id %}" id="form-marcar-pagado">
-                            {% csrf_token %}
-                            <button type="submit"
-                                    class="btn btn-success btn-sm w-100 d-flex justify-content-center align-items-center gap-2"
-                                    data-bs-toggle="tooltip" title="Confirmar pago y liberar la mesa">
-                                <i class="fas fa-check-circle"></i> Pagado
-                            </button>
-                        </form>
 
                         <form method="post" action="{% url 'pedidos:marcar_como_cortesia' pedido.id %}" id="form-marcar-cortesia">
                             {% csrf_token %}
                             <button type="submit"
-                                    class="btn btn-danger btn-sm w-100 d-flex justify-content-center align-items-center gap-2"
+                                    class="btn btn-outline-danger btn-sm w-100 d-flex justify-content-center align-items-center gap-2"
                                     data-bs-toggle="tooltip" title="Registrar pedido como cortesía, no suma en caja">
-                                <i class="fas fa-gift"></i> Cortesía
+                                <i class="fas fa-gift"></i> Marcar como Cortesía
                             </button>
                         </form>
                     </div>
 
                     <hr class="my-2">
 
-                    <!-- Acciones secundarias -->
+                    <!-- Acciones secundarias de estados -->
                     <div class="d-grid gap-2">
                         <form method="post" action="{% url 'pedidos:cambiar_estado' pk=pedido.id %}">
                             {% csrf_token %}
                             <input type="hidden" name="estado" value="EN_COCINA">
                             <button type="submit" class="btn btn-outline-info btn-sm w-100">
-                                <i class="fas fa-utensils"></i> Cocina (Solo Nuevos)
+                                <i class="fas fa-utensils"></i> Enviar a Cocina (Nuevos)
                             </button>
                         </form>
 
                         <form method="post" action="{% url 'pedidos:reimprimir_pedido' pk=pedido.id %}">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100" 
-                                    data-bs-toggle="tooltip" title="Imprime una copia de todo el pedido">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">
                                 <i class="fas fa-print"></i> Reimprimir Todo
                             </button>
                         </form> 
@@ -163,7 +253,7 @@
                             {% csrf_token %}
                             <input type="hidden" name="estado" value="COMPLETO">
                             <button type="submit" class="btn btn-outline-success btn-sm w-100">
-                                <i class="fas fa-check"></i> Completo
+                                <i class="fas fa-check"></i> Marcar Completo
                             </button>
                         </form>
 
@@ -171,30 +261,72 @@
                             {% csrf_token %}
                             <input type="hidden" name="estado" value="CANCELADO">
                             <button type="submit" class="btn btn-outline-danger btn-sm w-100">
-                                <i class="fas fa-times"></i> Cancelar
+                                <i class="fas fa-times"></i> Cancelar Pedido
                             </button>
                         </form>
 
                         <a href="{% url 'pedidos:editar_pedido' pedido.id %}"
-                           class="btn btn-outline-warning btn-sm w-100 d-flex justify-content-center align-items-center gap-2">
+                        class="btn btn-outline-warning btn-sm w-100 d-flex justify-content-center align-items-center gap-2">
                             <i class="fas fa-edit"></i> 
-                            {% if pedido.enviado_cocina %}Añadir{% else %}Editar{% endif %}
+                            {% if pedido.enviado_cocina %}Añadir Ítems{% else %}Editar Pedido{% endif %}
                         </a>
                     </div>
-
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Modal para Registrar Pagos / División de Cuentas -->
+<div class="modal fade" id="modalRegistrarPago" tabindex="-1" aria-labelledby="modalRegistrarPagoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'pedidos:registrar_pago' pedido.id %}">
+                {% csrf_token %}
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="modalRegistrarPagoLabel"><i class="fas fa-cash-register"></i> Registrar Pago</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small">
+                        Saldo pendiente por cobrar: <strong>S/ {{ pedido.saldo_pendiente|floatformat:2 }}</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="metodo" class="form-label">Método de Pago:</label>
+                        <select name="metodo" id="metodo" class="form-select" required>
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="YAPE">Yape</option>
+                            <option value="PLIN">Plin</option>
+                            <option value="TARJETA_DEBITO">Tarjeta de Débito</option>
+                            <option value="TARJETA_CREDITO">Tarjeta de Crédito</option>
+                            <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                            <option value="OTRO">Otro</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="monto" class="form-label">Monto (S/):</label>
+                        <input type="number" step="0.01" max="{{ pedido.saldo_pendiente }}" name="monto" id="monto" class="form-control" value="{{ pedido.saldo_pendiente }}" required>
+                        <div class="form-text">Si es división de cuentas, modifica este monto por la parte que paga el cliente.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="referencia" class="form-label">N° de Operación / Voucher (Opcional):</label>
+                        <input type="text" name="referencia" id="referencia" class="form-control" placeholder="Ej: 987654 (para Yape/Plin/Tarjeta)">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success btn-sm">Guardar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Confirmaciones JS -->
 <script>
-    document.getElementById('form-marcar-pagado').addEventListener('submit', function (e) {
-        if (!confirm("✅ Confirmar: marcar pedido#{{ pedido.numero_diario }} como PAGADO?")) {
-            e.preventDefault();
-        }
-    });
     document.getElementById('form-marcar-cortesia').addEventListener('submit', function (e) {
         if (!confirm("🎁 Confirmar: marcar pedido #{{ pedido.numero_diario }} como CORTESÍA?")) {
             e.preventDefault();

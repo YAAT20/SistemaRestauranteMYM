@@ -32,30 +32,50 @@
             <form method="post" id="pedidoForm"
                 action="{% if pedido %}{% url 'pedidos:editar_pedido' pedido.id %}{% else %}{% url 'pedidos:crear_pedido' %}{% endif %}">
                 {% csrf_token %}
-                {% if mesa_id %}
-                <input type="hidden" name="mesa" value="{{ mesa_id }}">
-                {% endif %}
 
-                <!-- Información del Cliente -->
+                <!-- 🆕 Información y Tipo de Pedido (Local vs Para Llevar) -->
                 <div class="form-section">
                     <div class="section-title">
                         <i class="fas fa-user-circle"></i>
-                        Información del Cliente
+                        Información del Pedido y Cliente
                     </div>
+
+                    <!-- Selector de Tipo de Pedido -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tipo de Pedido:</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="tipo" id="tipo_local" value="LOCAL" 
+                                {% if not pedido or pedido.tipo == 'LOCAL' %}checked{% endif %} 
+                                autocomplete="off" onchange="toggleMesa(this.value)" {% if pedido %}disabled{% endif %}>
+                            <label class="btn btn-outline-primary" for="tipo_local">
+                                <i class="fas fa-chair me-1"></i> Consumo en Local
+                            </label>
+
+                            <input type="radio" class="btn-check" name="tipo" id="tipo_llevar" value="LLEVAR" 
+                                {% if pedido and pedido.tipo == 'LLEVAR' %}checked{% endif %} 
+                                autocomplete="off" onchange="toggleMesa(this.value)" {% if pedido %}disabled{% endif %}>
+                            <label class="btn btn-outline-info" for="tipo_llevar">
+                                <i class="fas fa-shopping-bag me-1"></i> Para Llevar
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <!-- Contenedor dinámico de Mesa -->
+                        <div class="col-md-4" id="seccion-mesa" style="{% if pedido and pedido.tipo == 'LLEVAR' %}display: none;{% endif %}">
                             <label class="form-label">
                                 <i class="fas fa-chair me-1"></i> Mesa
                             </label>
-                            <select name="mesa" class="form-select" required {% if pedido %}disabled{% endif %}>
+                            <select name="mesa" id="mesa" class="form-select" {% if not pedido or pedido.tipo == 'LOCAL' %}required{% endif %} {% if pedido %}disabled{% endif %}>
+                                <option value="">-- Seleccione --</option>
                                 {% for mesa in mesas %}
-                                <option value="{{ mesa.id }}" {% if mesa_id and mesa.id == mesa_id %}selected{% endif %}>
+                                <option value="{{ mesa.id }}" {% if mesa_id and mesa.id == mesa_id or pedido and pedido.mesa_id == mesa.id %}selected{% endif %}>
                                     Mesa {{ mesa.numero }}
                                 </option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-{% if pedido and pedido.tipo == 'LLEVAR' %}8{% else %}4{% endif %}" id="col-nombre-cliente">
                             <label class="form-label">
                                 <i class="fas fa-user me-1"></i> Nombre del Cliente
                             </label>
@@ -199,6 +219,26 @@
     });
 </script>
 {% endif %}
+
+<!-- 🆕 Script para alternar visibilidad de la mesa según tipo de pedido -->
+<script>
+    function toggleMesa(tipo) {
+        const seccionMesa = document.getElementById('seccion-mesa');
+        const selectMesa = document.getElementById('mesa');
+        const colNombreCliente = document.getElementById('col-nombre-cliente');
+
+        if (tipo === 'LLEVAR') {
+            seccionMesa.style.display = 'none';
+            selectMesa.value = '';
+            selectMesa.removeAttribute('required');
+            colNombreCliente.className = 'col-md-8'; // Expande el campo de nombre si no hay mesa
+        } else {
+            seccionMesa.style.display = 'block';
+            selectMesa.setAttribute('required', 'required');
+            colNombreCliente.className = 'col-md-4'; // Vuelve al tamaño original
+        }
+    }
+</script>
 
 <script defer src="{% static 'pedidos/js/pedido_pos.js' %}"></script>
 {% endblock %}
