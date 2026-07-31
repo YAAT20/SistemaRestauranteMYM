@@ -1,25 +1,52 @@
+# Entornos virtuales
 venv/
+.venv/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+
+# Base de datos
 db.sqlite3
+
+# Variables de entorno
 .env
 .env.*
+
+# Configuración local
 local_settings.py
+restaurantemym/settings.py
+
+# Docker
+docker-compose.yml
+Dockerfile
+docker-compose.override.yml
+
+# Gunicorn
+gunicorn.conf.py
+gunicorn.ctl
+
+# Certificados
 *.pem
 *.key
 *.crt
+
+# Logs
 *.log
+
+# IDEs
 .vscode/
 .idea/
+
+# Archivos estáticos y media generados
 staticfiles/
 media/
+
+# macOS
 .DS_Store
+
+# Cobertura y tests
 .coverage
 htmlcov/
-pytest_cache/
-__pycache__/
-venv/
-docker-compose.yml
-Dockerfile
-gunicorn.ctl
-restaurantemym/settings.py
+.pytest_cache/
