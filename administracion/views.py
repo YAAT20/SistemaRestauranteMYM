@@ -1,18 +1,17 @@
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView, TemplateView
 from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
 from .models import ConfiguracionRestaurante, ReporteVenta
 from django.shortcuts import redirect, render
 from django.contrib import messages
 from django.utils import timezone
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
 from django.db.models import Sum, F
 from django.contrib.auth.decorators import login_required
 from pedidos.models import Pedido, DetallePedido
 from menu.models import Plato
 import json
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Sum, F
 from inventario.models import Producto
 from usuarios.mixins import AdminRequiredMixin
 from usuarios.decorators import admin_required
@@ -299,3 +298,97 @@ def reporte_dashboard(request):
     }
 
     return render(request, 'administracion/reporte_dashboard.html', context)
+
+class DesgloseVentasView(AdminRequiredMixin, TemplateView):
+    template_name = 'administracion/desglose_ventas.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        periodo = self.request.GET.get('periodo', 'todos')
+        hoy = date.today()
+
+        detalles = DetallePedido.objects.select_related(
+            'plato',
+            'producto',
+            'pedido'
+        ).all()
+
+        # Filtros basados en fecha del pedido
+        if periodo == 'hoy':
+            inicio_dia = datetime.combine(hoy, time.min)
+            fin_dia = datetime.combine(hoy, time.max)
+
+            detalles = detalles.filter(
+                pedido__fecha_hora__range=(inicio_dia, fin_dia)
+            )
+
+        elif periodo == 'semana':
+            inicio_semana = hoy - timedelta(days=hoy.weekday())
+
+            inicio_dt = datetime.combine(
+                inicio_semana,
+                time.min
+            )
+
+            fin_dt = datetime.combine(
+                hoy,
+                time.max
+            )
+
+            detalles = detalles.filter(
+                pedido__fecha_hora__range=(inicio_dt, fin_dt)
+            )
+
+        elif periodo == 'mes':
+            inicio_mes = hoy.replace(day=1)
+
+            inicio_dt = datetime.combine(
+                inicio_mes,
+                time.min
+            )
+
+            fin_dt = datetime.combine(
+                hoy,
+                time.max
+            )
+
+            detalles = detalles.filter(
+                pedido__fecha_hora__range=(inicio_dt, fin_dt)
+            )
+            
+        conteo_ventas = {}
+        
+        for item in detalles:
+            if hasattr(item, 'asociado') and item.asociado():
+                nombre = str(item.asociado())
+            elif item.plato:
+                nombre = item.plato.nombre
+            elif item.producto:
+                nombre = item.producto.nombre
+            else:
+                nombre = "Ítem sin nombre"
+                
+            cantidad = float(item.cantidad or 0)
+            precio = float(item.precio_unitario or 0)
+            ingreso_total = cantidad * precio
+            
+            if nombre not in conteo_ventas:
+                conteo_ventas[nombre] = {
+                    'nombre_item': nombre,
+                    'total_unidades': 0,
+                    'total_ingresos': 0.0
+                }
+            
+            conteo_ventas[nombre]['total_unidades'] += cantidad
+            conteo_ventas[nombre]['total_ingresos'] += ingreso_total
+
+        ranking_productos = sorted(
+            conteo_ventas.values(), 
+            key=lambda x: x['total_unidades'], 
+            reverse=True
+        )
+        
+        context['ranking_platos'] = ranking_productos
+        context['periodo_actual'] = periodo
+        return context

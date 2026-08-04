@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Desglose de Ventas por Producto{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>📊 Desglose de Ventas por Plato / Producto</h2>
+        <a href="javascript:window.print();" class="btn btn-outline-secondary">
+            <i class="fas fa-print"></i> Imprimir Reporte
+        </a>
+    </div>
+
+    <!-- 📅 BOTONES DE FILTRO POR TIEMPO -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="btn-group shadow-sm" role="group">
+                <a href="?periodo=todos" class="btn {% if periodo_actual == 'todos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="fas fa-globe"></i> Histórico Total
+                </a>
+                <a href="?periodo=hoy" class="btn {% if periodo_actual == 'hoy' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="fas fa-calendar-day"></i> Hoy
+                </a>
+                <a href="?periodo=semana" class="btn {% if periodo_actual == 'semana' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="fas fa-calendar-week"></i> Esta Semana
+                </a>
+                <a href="?periodo=mes" class="btn {% if periodo_actual == 'mes' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="fas fa-calendar-alt"></i> Este Mes
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Nombre del Plato / Producto</th>
+                            <th class="text-center">Unidades Vendidas</th>
+                            <th class="text-end">Total Recaudado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in ranking_platos %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td><strong>{{ item.nombre_item }}</strong></td>
+                            <td class="text-center">
+                                <span class="badge bg-success fs-6">{{ item.total_unidades|floatformat:0 }} un.</span>
+                            </td>
+                            <td class="text-end fw-bold text-success">
+                                S/ {{ item.total_ingresos|default:0|floatformat:2 }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-muted">
+                                No hay registros de ventas para este periodo.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

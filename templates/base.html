@@ -73,6 +73,12 @@
                         <a class="nav-link" href="{% url 'inventario:producto_list' %}" data-page="inventario">
                             <i class="fas fa-boxes me-1"></i> 
                             <span>Inventario</span>
+                            
+                            {% if productos_criticos_count > 0 %}
+                                <span class="badge rounded-pill bg-danger ms-1" title="Productos con stock bajo o agotados">
+                                    {{ productos_criticos_count }}
+                                </span>
+                            {% endif %}
                         </a>
                     </li>
                     <li class="nav-item">
@@ -85,6 +91,12 @@
                         <a class="nav-link" href="{% url 'administracion:reporte_dashboard' %}" data-page="reportes">
                             <i class="fas fa-chart-bar me-1"></i> 
                             <span>Reportes</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'administracion:desglose_ventas' %}">
+                            <i class="fas fa-chart-bar me-1"></i> 
+                            <span>Reporte por producto</span>
                         </a>
                     </li>
                     <li class="nav-item">

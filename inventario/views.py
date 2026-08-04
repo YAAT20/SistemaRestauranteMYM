@@ -20,6 +20,18 @@ class ProductoListView(LoginRequiredMixin, ListView):
     context_object_name = "productos"
     ordering = ["nombre"]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        filtro = self.request.GET.get('filtro')
+        
+        if filtro == 'criticos':
+            # Filtra productos cuyo stock sea menor o igual al punto de pedido
+            queryset = [p for p in queryset if p.requiere_atencion]
+        elif filtro == 'agotados':
+            queryset = [p for p in queryset if p.esta_agotado]
+            
+        return queryset
+
 
 class ProductoCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     model = Producto

@@ -15,4 +15,5 @@ urlpatterns = [
     path('reportes/<int:pk>/', ReporteVentaDetailView.as_view(), name='reporte_detail'),
     path('reportes/generar/<str:tipo>/', generar_reporte_ventas, name='generar_reporte'),
     path('reporte-dashboard/', reporte_dashboard, name='reporte_dashboard'),
+    path('reportes/desglose-productos/', DesgloseVentasView.as_view(), name='desglose_ventas'),
 ]
