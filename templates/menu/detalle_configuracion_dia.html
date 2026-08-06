@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Detalle de Menú - {{ fecha }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-lg border-0 rounded-3">
+        <div class="card-header bg-gradient bg-dark text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 fw-bold">
+                <i class="fas fa-clipboard-list me-2"></i> Menú Programado para el: {{ fecha }}
+            </h4>
+            <div class="d-flex gap-2">
+                <a href="{% url 'menu:configurar_platos_del_dia' %}?fecha={{ fecha }}" class="btn btn-warning btn-sm shadow-sm">
+                    <i class="fas fa-edit me-1"></i> Modificar este día
+                </a>
+                <a href="{% url 'menu:historial_configuracion' %}" class="btn btn-light btn-sm shadow-sm">
+                    <i class="fas fa-arrow-left"></i> Volver al Historial
+                </a>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle shadow-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Nombre del Plato</th>
+                            <th class="text-center">Precio Asignado</th>
+                            <th class="text-center">Stock Registrado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in platos_del_dia %}
+                            <tr>
+                                <td>
+                                    {% if item.plato.tipo == 'entrada' %}
+                                        <span class="badge bg-success">Entrada</span>
+                                    {% elif item.plato.tipo == 'menu' %}
+                                        <span class="badge bg-primary">Menú del Día</span>
+                                    {% elif item.plato.tipo == 'desayuno' %}
+                                        <span class="badge bg-warning text-dark">Desayuno</span>
+                                    {% else %}
+                                        <span class="badge bg-dark">Plato a la Carta</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-semibold">{{ item.plato.nombre }}</td>
+                                <td class="text-center">
+                                    {% if item.plato.precio > 0 %}
+                                        S/ {{ item.plato.precio|floatformat:2 }}
+                                    {% else %}
+                                        <span class="text-muted">Sin costo</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="fw-bold">{{ item.plato.stock_diario }}</span>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">
+                                    No se encontraron platos configurados para esta fecha.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

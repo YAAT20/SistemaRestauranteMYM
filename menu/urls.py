@@ -13,5 +13,7 @@ urlpatterns = [
     path('configurar-dia/', views.ConfigurarPlatosDelDiaView.as_view(), name='configurar_platos_del_dia'),
     path("carta/", views.CartaDelDiaView.as_view(), name="carta_del_dia"),
     path("platos/<int:plato_id>/ingredientes/", views.asignar_ingrediente, name="asignar_ingrediente"),
-
+path('configurar-dia/', views.ConfigurarPlatosDelDiaView.as_view(), name='configurar_platos_del_dia'),
+    path('configuraciones/historial/', views.HistorialConfiguracionListView.as_view(), name='historial_configuracion'),
+    path('configuraciones/detalle/<str:fecha>/', views.DetalleConfiguracionDiaView.as_view(), name='detalle_configuracion_dia'),
 ]

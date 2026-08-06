@@ -1,6 +1,7 @@
 from django.db import models
 from django.db import transaction
 from inventario.models import MovimientoInventario
+from datetime import date
 
 class Plato(models.Model):
     TIPO = (
@@ -73,7 +74,7 @@ class Plato(models.Model):
 
 class PlatoDelDia(models.Model):
     plato = models.ForeignKey(Plato, on_delete=models.CASCADE)
-    fecha = models.DateField(auto_now_add=True)
+    fecha = models.DateField(default=date.today) 
 
     class Meta:
         unique_together = ('plato', 'fecha')

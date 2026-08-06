@@ -1,42 +1,61 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import ListView
 from django.views.generic.edit import CreateView, UpdateView, DeleteView
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from .models import *
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views import View
 from django.utils import timezone
-from datetime import time, date
+from datetime import datetime, time, date
 from decimal import Decimal, InvalidOperation
 from django.views.generic import TemplateView
 from .models import Receta
 from inventario.models import Producto
+from django.db.models import Count, Q
 
 class ConfigurarPlatosDelDiaView(LoginRequiredMixin, View):
     template_name = 'menu/configurar_platos_del_dia.html'
 
     def get(self, request):
+        fecha_str = request.GET.get('fecha')
+        if fecha_str:
+            try:
+                fecha_seleccionada = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+            except ValueError:
+                fecha_seleccionada = date.today()
+        else:
+            fecha_seleccionada = date.today()
+
         platos = Plato.objects.all().order_by('tipo', 'nombre')
-        seleccionados = PlatoDelDia.objects.filter(fecha=date.today()).values_list('plato_id', flat=True)
+        
+        seleccionados = PlatoDelDia.objects.filter(fecha=fecha_seleccionada).values_list('plato_id', flat=True)
+        
         return render(request, self.template_name, {
             'platos': platos,
             'seleccionados': list(seleccionados),
+            'fecha_seleccionada': fecha_seleccionada.strftime('%Y-%m-%d'),
         })
 
+    @transaction.atomic
     def post(self, request):
-        # 1. Desactivar solo entradas y menús (carta se revisa plato por plato más abajo)
-        Plato.objects.filter(tipo__in=['entrada', 'menu']).update(disponible=False)
+        # Captura directa y estricta priorizando GET (la URL)
+        fecha_str = request.GET.get('fecha') or request.POST.get('fecha_configuracion')
+        
+        try:
+            fecha_objetivo = datetime.strptime(fecha_str, '%Y-%m-%d').date() if fecha_str else date.today()
+        except ValueError:
+            fecha_objetivo = date.today()
 
-        # 2. Eliminar configuración anterior de hoy
-        PlatoDelDia.objects.filter(fecha=date.today()).delete()
-
-        # 3. Procesar seleccionados
         seleccionados = request.POST.getlist('platos')
+        seleccionados_ids = [int(p_id) for p_id in seleccionados if p_id.isdigit()]
 
+        # 1. Borramos únicamente los registros que ya NO están seleccionados para ESTA fecha objetivo
+        PlatoDelDia.objects.filter(fecha=fecha_objetivo).exclude(plato_id__in=seleccionados_ids).delete()
+
+        # 2. Iteramos y usamos update_or_create para garantizar que JAMÁS falle por clave duplicada
         for plato in Plato.objects.all():
-            if str(plato.id) in seleccionados:
-                # Stock
+            if plato.id in seleccionados_ids:
                 stock_str = request.POST.get(f"stock_{plato.id}", "")
                 stock = int(stock_str) if stock_str.isdigit() else plato.stock_diario
 
@@ -49,29 +68,64 @@ class ConfigurarPlatosDelDiaView(LoginRequiredMixin, View):
                 else:
                     precio = plato.precio
 
-                # Guardar cambios
-                plato.stock_diario = stock
-                plato.stock_actual = stock
-                plato.precio = precio
-                plato.disponible = True
-                plato.save()
+                if fecha_objetivo == date.today():
+                    plato.stock_diario = stock
+                    plato.stock_actual = stock
+                    plato.precio = precio
+                    plato.disponible = True
+                    plato.save()
+                else:
+                    plato.precio = precio
+                    plato.save()
 
-                PlatoDelDia.objects.create(
+                # ESTA ES LA CLAVE: update_or_create actualiza si ya existe o lo crea si no existe
+                PlatoDelDia.objects.update_or_create(
                     plato=plato,
-                    fecha=date.today()
+                    fecha=fecha_objetivo,
+                    defaults={}
                 )
             else:
-                # Entradas y menús se apagan siempre
-                if plato.tipo in ['entrada', 'menu']:
-                    plato.disponible = False
-                    plato.save()
-                # Carta: si quieres que se pueda apagar desde config
-                elif plato.tipo == 'carta':
-                    plato.disponible = False
-                    plato.save()
+                if fecha_objetivo == date.today():
+                    if plato.tipo in ['entrada', 'menu', 'carta', 'desayuno']:
+                        plato.disponible = False
+                        plato.save()
 
-        messages.success(request, 'Platos del día configurados correctamente')
-        return redirect('menu:plato_list')
+        messages.success(request, f'Platos configurados correctamente para la fecha: {fecha_objetivo}')
+        return redirect(f"{reverse('menu:configurar_platos_del_dia')}?fecha={fecha_objetivo}")
+
+class HistorialConfiguracionListView(LoginRequiredMixin, ListView):
+    """Muestra una lista con todas las fechas que tienen platos programados"""
+    model = PlatoDelDia
+    template_name = 'menu/historial_configuracion_list.html'
+    context_object_name = 'configuraciones_por_fecha'
+    paginate_by = 10
+
+    def get_queryset(self):
+        # Agrupamos por fecha para mostrar cuántos platos tiene configurados cada día
+        return (
+            PlatoDelDia.objects.values('fecha')
+            .annotate(
+                total_platos=Count('id'),
+                menus_count=Count('plato', filter=Q(plato__tipo='menu')),
+                entradas_count=Count('plato', filter=Q(plato__tipo='entrada')),
+                carta_count=Count('plato', filter=Q(plato__tipo='carta')),
+                desayunos_count=Count('plato', filter=Q(plato__tipo='desayuno')),
+            )
+            .order_by('-fecha')
+        )
+
+class DetalleConfiguracionDiaView(LoginRequiredMixin, View):
+    """Muestra el detalle completo de los platos configurados para una fecha específica"""
+    template_name = 'menu/detalle_configuracion_dia.html'
+
+    def get(self, request, fecha):
+        platos_del_dia = PlatoDelDia.objects.filter(fecha=fecha).select_related('plato')
+        
+        contexto = {
+            'fecha': fecha,
+            'platos_del_dia': platos_del_dia,
+        }
+        return render(request, self.template_name, contexto)
 
 class PlatoListView(LoginRequiredMixin, ListView):
     template_name = 'menu/plato_list.html'

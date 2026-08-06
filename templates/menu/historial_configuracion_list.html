@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Historial de Menús Programados{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-lg border-0 rounded-3">
+        <div class="card-header bg-gradient bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 fw-bold">
+                <i class="fas fa-calendar-alt me-2"></i> Historial de Menús por Fecha
+            </h4>
+            <a href="{% url 'menu:configurar_platos_del_dia' %}" class="btn btn-light btn-sm shadow-sm">
+                <i class="fas fa-plus me-1"></i> Configurar Nuevo Día
+            </a>
+        </div>
+        
+        <div class="card-body">
+            <p class="text-muted">
+                Aquí puedes visualizar el listado de todas las fechas que cuentan con programación de platos, menús y stock. Haz clic en <b>Ver Detalle</b> para revisar o en <b>Editar</b> para modificar.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle shadow-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha Programada</th>
+                            <th class="text-center">Total Platos</th>
+                            <th class="text-center">Desglose por Tipo</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in configuraciones_por_fecha %}
+                            <tr>
+                                <td class="fw-bold text-primary">
+                                    <i class="fas fa-calendar-day me-2"></i> {{ item.fecha|date:"l, d/m/Y" }}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary fs-6">{{ item.total_platos }}</span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-success me-1" title="Entradas">E: {{ item.entradas_count }}</span>
+                                    <span class="badge bg-primary me-1" title="Menús">M: {{ item.menus_count }}</span>
+                                    <span class="badge bg-warning text-dark me-1" title="Desayunos">D: {{ item.desayunos_count }}</span>
+                                    <span class="badge bg-dark" title="Carta">C: {{ item.carta_count }}</span>
+                                </td>
+                                <td class="text-end">
+                                    <a href="{% url 'menu:detalle_configuracion_dia' item.fecha|date:'Y-m-d' %}" class="btn btn-info btn-sm shadow-sm text-white">
+                                        <i class="fas fa-eye"></i> Ver Detalle
+                                    </a>
+                                    <a href="{% url 'menu:configurar_platos_del_dia' %}?fecha={{ item.fecha|date:'Y-m-d' }}" class="btn btn-warning btn-sm shadow-sm">
+                                        <i class="fas fa-edit"></i> Editar
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">
+                                    <i class="fas fa-folder-open fa-2x mb-2"></i>
+                                    <p class="mb-0">No hay configuraciones de menús registradas todavía.</p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
